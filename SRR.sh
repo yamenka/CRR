@@ -1,166 +1,143 @@
 #!/bin/bash
 
-# Initialize arrays
-process=()
-nut=()
-arrival=()
-status=()
-priority=()
-final_status=()
-final_priority=()
+# Sample Input
+processes=("p1 6 0" "p2 5 1" "p3 4 3" "p4 2 4")
+
+# Initialization
+service_times=(6 5 4 2)
+arrival_times=(0 1 3 4)
+priorities=(0 0 0 0)  # Initial priorities all set to 0
+new_queue=()
 accepted_queue=()
-time_steps=() # Array to store the status of each process at each time step
+status_queue=('-' '-' '-' '-')
+T=0
+q=1
 
-# Read file and populate arrays
-while IFS= read -r line || [[ -n "$line" ]]; do
-    read -r p n a <<< "$line"
-    process+=("$p")
-    nut+=("$n")
-    arrival+=("$a")
-    status+=("-")  # Initialize status as "-" for each process
-    priority+=("0") # Initialize priority as 0
-    final_status+=("-")
-    final_priority+=("0")
-done < "data.txt"
+# Helper function to update status
+update_status() {
+    for i in {0..3}; do
+        if [[ "${status_queue[$i]}" != "F" && "${status_queue[$i]}" != "W" ]]; then
+            status_queue[$i]='-'
+        fi
+    done
 
-# Function to sort arrays based on arrival times
-sort_arrays() {
-    local i j
-    for ((i = 0; i < ${#arrival[@]}; i++)); do
-        for ((j = i + 1; j < ${#arrival[@]}; j++)); do
-            if (( arrival[i] > arrival[j] )); then
-                # Swap in all arrays
-                tmp=${arrival[i]}
-                arrival[i]=${arrival[j]}
-                arrival[j]=$tmp
+    for p in "${new_queue[@]}"; do
+        index=$(getIndex "$p")
+        status_queue[$index]='W'
+    done
 
-                tmp=${process[i]}
-                process[i]=${process[j]}
-                process[j]=$tmp
+    for i in "${!accepted_queue[@]}"; do
+        p="${accepted_queue[$i]}"
+        index=$(getIndex "$p")
+        if [[ $i -eq 0 ]]; then
+            status_queue[$index]='R'
+        else
+            status_queue[$index]='W'
+        fi
+    done
+}
 
-                tmp=${nut[i]}
-                nut[i]=${nut[j]}
-                nut[j]=$tmp
+# Helper function to get the index of a process in processes array
+getIndex() {
+    local process="$1"
+    for i in "${!processes[@]}"; do
+        if [[ "${processes[$i]}" == "$process" ]]; then
+            echo "$i"
+            return
+        fi
+    done
+}
 
-                tmp=${status[i]}
-                status[i]=${status[j]}
-                status[j]=$tmp
+# Helper function to find the minimum priority in the accepted queue
+minPriority() {
+    local min=0
+    for p in "${accepted_queue[@]}"; do
+        index=$(getIndex "$p")
+        if [[ "${priorities[$index]}" < "$min" ]]; then
+            min=$((priorities[index]))
+        fi
+    done
+    echo "$min"
+}
 
-                tmp=${priority[i]}
-                priority[i]=${priority[j]}
-                priority[j]=$tmp
-
-                tmp=${final_status[i]}
-                final_status[i]=${final_status[j]}
-                final_status[j]=$tmp
-
-                tmp=${final_priority[i]}
-                final_priority[i]=${final_priority[j]}
-                final_priority[j]=$tmp
+# Main Loop
+while [[ "${status_queue[*]}" != "F F F F" ]]; do
+    # Check arrivals
+    for p in "${processes[@]}"; do
+        IFS=' ' read -ra process_info <<< "$p"
+        if [[ "${process_info[2]}" == "$T" ]]; then
+            if [[ "${#accepted_queue[@]}" -eq 0 ]]; then
+                index=${#accepted_queue[@]}
+                accepted_queue[$index]="$p"
+                status_queue[$(getIndex "$p")]='R'
+            else
+                index=${#new_queue[@]}
+                new_queue[$index]="$p"
             fi
-        done
-    done
-}
-
-# Sort the arrays
-sort_arrays
-
-# Function to update time_steps array with the current status of each process
-update_time_steps() {
-    local current_status=()
-    for st in "${status[@]}"; do
-        current_status+=("$st")
-    done
-    time_steps+=("$(IFS=' '; echo "${current_status[*]}")")
-}
-
-# Time variable
-t=0
-
-# Main processing loop
-while true; do
-    # Check for new arrivals and add them to the queue
-    for i in "${!arrival[@]}"; do
-        if [[ "${arrival[i]}" -eq "$t" ]]; then
-            accepted_queue+=("${process[i]}")
-            status[i]="W" # W for Waiting
         fi
     done
 
-    # Reset status to Waiting for all processes except the one currently running
-    for i in "${!status[@]}"; do
-        if [[ "${status[i]}" = "R" ]]; then
-            status[i]="W" # W for Waiting
-        fi
+    ## For new queue
+    for p in "${new_queue[@]}"; do
+        index=$(getIndex "$p")
+        current_priority=$((priorities[index]))
+        priorities[$index]=$((current_priority + 2))
     done
 
-    # Process the first item in the queue
-    if [[ ${#accepted_queue[@]} -gt 0 ]]; then
-        current_process=${accepted_queue[0]}
-        for i in "${!process[@]}"; do
-            if [[ "${process[i]}" == "$current_process" ]]; then
-                status[i]="R" # R for Running
-                ((nut[i]--))
-                ((priority[i]++))
+    # For accepted queue
+    for p in "${accepted_queue[@]}"; do
+        index=$(getIndex "$p")
+        current_priority=$((priorities[index]))
+        priorities[$index]=$((current_priority + 1))
+    done
 
-                # Check if the process is finished
-                if [[ "${nut[i]}" -eq 0 ]]; then
-                    status[i]="F" # F for Finished
-                    final_status[i]="F"
-                    final_priority[i]=${priority[i]}
-                else
-                    # Move to the end of the queue if not finished
-                    accepted_queue+=("${current_process}")
+    update_status
+    echo "Before T = $T, Status Queue: ${status_queue[@]}, Priorities: ${priorities[@]}, ${service_times[@]}, Accepted queue: ${accepted_queue[@]}, new queue: ${new_queue[@]}"
+
+    # Process execution in accepted queue
+
+    # Move processes between queues
+    for p in "${new_queue[@]}"; do
+        index=$(getIndex "$p")
+        accepted_priority=$(minPriority)
+        if [[ "${#accepted_queue[@]}" -ne 0 && "${priorities[$index]}" -ge "$accepted_priority" ]]; then
+            new_array=()
+            for element in "${new_queue[@]}"; do
+                if [ "$element" != "$p" ]; then
+                    new_array[${#new_array[@]}]="$element"
                 fi
-                unset accepted_queue[0] # Remove from front of queue
-                break
-            fi
-        done
-    fi
+            done
+            new_queue=("${new_array[@]}")
+            unset new_array
+            index=${#accepted_queue[@]}
+            accepted_queue[$index]="$p"
 
-    # Update time_steps array with current status
-    update_time_steps
-
-    # Re-index accepted_queue array to remove gaps
-    accepted_queue=("${accepted_queue[@]}")
-
-    # Check if all processes are finished
-    all_finished=true
-    for st in "${status[@]}"; do
-        if [[ "$st" != "F" ]]; then
-            all_finished=false
-            break
         fi
     done
 
-    if [[ "$all_finished" == true ]]; then
-        break
+    if [[ "${#accepted_queue[@]}" -ne 0 ]]; then
+        running_process="${accepted_queue[0]}"
+        new_array=("${accepted_queue[@]:1}")
+        accepted_queue=("${new_array[@]}")
+        unset new_array
+        index=$(getIndex "$running_process")
+        service_times[$index]=$((service_times[$index] - 1))
+
+        # Check if process is finished
+        if [[ "${service_times[$index]}" -le 0 ]]; then
+            status_queue[$index]='F'
+        else
+            index=${#accepted_queue[@]}
+            accepted_queue[$index]="$running_process"
+        fi
     fi
 
-    # Increment time
-    ((t++))
+    # Update statuses
+    update_status
+    echo "After T = $T, Status Queue: ${status_queue[@]}, Priorities: ${priorities[@]}, ${service_times[@]}, Accepted queue: ${accepted_queue[@]}, new queue: ${new_queue[@]}"
+
+    ((T++))
 done
 
-# Print the consolidated status table with increased spacing
-printf "T\t"
-for p in "${process[@]}"; do
-    printf "%s\t" "$p"
-done
-echo
-
-for ((i = 0; i < ${#time_steps[@]}; i++)); do
-    printf "%d\t" "$i"
-    IFS=' ' read -r -a current_status <<< "${time_steps[i]}"
-    for st in "${current_status[@]}"; do
-        printf "%s\t" "$st"
-    done
-    echo
-done
-
-# Print final state
-echo "Final state of arrays after processing:"
-echo "Processes: ${process[*]}"
-echo "Nut: ${nut[*]}"
-echo "Arrival: ${arrival[*]}"
-echo "Status: ${final_status[*]}"
-echo "Priority: ${final_priority[*]}"
+# Output final status
+echo "T = $T, Status Queue: ${status_queue[@]}, Priorities: ${priorities[@]}, ${service_times[@]}"
