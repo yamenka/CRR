@@ -1,13 +1,15 @@
 #!/bin/bash
 
-# Check if a filename was provided
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 filename"
+# Check if three arguments were provided
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 filename new_queue_increment accepted_queue_increment"
     exit 1
 fi
 
-# Get file path from the first argument
+# Assignments from arguments
 file="$1"
+new_queue_increment="$2"
+accepted_queue_increment="$3"
 
 # Check if the file exists
 if [ ! -f "$file" ]; then
@@ -40,7 +42,8 @@ done < "$file"
 
 # Helper function to update status
 update_status() {
-    for i in {0..3}; do
+    local length=${#status_queue[@]}
+    for ((i=0;  i<length; i++)); do
         if [[ "${status_queue[$i]}" != "F" && "${status_queue[$i]}" != "W" ]]; then
             status_queue[$i]='-'
         fi
@@ -86,8 +89,8 @@ minPriority() {
 }
 
 # Main Loop
-while [[ "${status_queue[*]}" != "F F F F" ]]; do
-    # Check arrivals
+while :; do  # Infinite loop, will break inside based on condition
+    all_finished=true    # Check arrivals
     for p in "${processes[@]}"; do
         IFS=' ' read -ra process_info <<< "$p"
         if [[ "${process_info[2]}" == "$T" ]]; then
@@ -106,14 +109,14 @@ while [[ "${status_queue[*]}" != "F F F F" ]]; do
     for p in "${new_queue[@]}"; do
         index=$(getIndex "$p")
         current_priority=$((priorities[index]))
-        priorities[$index]=$((current_priority + 2))
+        priorities[$index]=$((current_priority + $new_queue_increment))
     done
 
     # For accepted queue
     for p in "${accepted_queue[@]}"; do
         index=$(getIndex "$p")
         current_priority=$((priorities[index]))
-        priorities[$index]=$((current_priority + 1))
+        priorities[$index]=$((current_priority + $accepted_queue_increment))
     done
 
     update_status
@@ -159,6 +162,17 @@ while [[ "${status_queue[*]}" != "F F F F" ]]; do
 
     # Update statuses
     update_status
+    for status in "${status_queue[@]}"; do
+        if [[ "$status" != "F" ]]; then
+            all_finished=false
+            break  # Break the for loop, not the while loop
+        fi
+    done
+    if [[ "$all_finished" = true ]]; then
+        break  # Break the while loop if all processes are finished
+    fi
+
+
     ((T++))
 done
 
