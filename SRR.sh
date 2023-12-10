@@ -1,17 +1,42 @@
 #!/bin/bash
 
-# Sample Input
-processes=("p1 6 0" "p2 5 1" "p3 4 3" "p4 2 4")
+# Check if a filename was provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 filename"
+    exit 1
+fi
+
+# Get file path from the first argument
+file="$1"
+
+# Check if the file exists
+if [ ! -f "$file" ]; then
+    echo "Error: File not found: $file"
+    exit 1
+fi
 
 # Initialization
-service_times=(6 5 4 2)
-arrival_times=(0 1 3 4)
-priorities=(0 0 0 0)  # Initial priorities all set to 0
+service_times=()
+arrival_times=()
+priorities=()  # Initial priorities all set to 0
 new_queue=()
 accepted_queue=()
-status_queue=('-' '-' '-' '-')
+status_queue=()
 T=0
 q=1
+
+# Read file and populate arrays
+while IFS= read -r line || [[ -n "$line" ]]; do
+    # Split line into words
+    read -ra ADDR <<< "$line"
+
+    # Populate arrays
+    processes+=("${ADDR[0]} ${ADDR[1]} ${ADDR[2]}")
+    service_times+=("${ADDR[1]}")
+    arrival_times+=("${ADDR[2]}")
+    priorities+=(0)  # Assuming priority is initially 0 for all
+    status_queue+=('-')
+done < "$file"
 
 # Helper function to update status
 update_status() {
@@ -134,8 +159,6 @@ while [[ "${status_queue[*]}" != "F F F F" ]]; do
 
     # Update statuses
     update_status
-    echo "After T = $T, Status Queue: ${status_queue[@]}, Priorities: ${priorities[@]}, ${service_times[@]}, Accepted queue: ${accepted_queue[@]}, new queue: ${new_queue[@]}"
-
     ((T++))
 done
 
